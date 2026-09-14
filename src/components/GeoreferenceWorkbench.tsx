@@ -48,7 +48,7 @@ export function GeoreferenceWorkbench({ site, onClose }: Props) {
   const initialTargetId = initialTarget?.id
   const [session, setSession] = useState<GeoreferenceSession>(() => loadSession(site.id, initialTargetId, initialTarget?.linkedExtentIds[0]))
   const [imageUrl, setImageUrl] = useState<string>()
-  const imageUrlRef = useRef<string>()
+  const imageUrlRef = useRef<string | undefined>(undefined)
   const [captureMode, setCaptureMode] = useState<CaptureMode>('control')
   const [pendingPixel, setPendingPixel] = useState<PixelPoint>()
   const [pendingLng, setPendingLng] = useState('')

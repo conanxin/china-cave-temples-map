@@ -18,8 +18,8 @@ interface Props {
 
 export function AmapGroundPointPicker({ site, onUse, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<any>()
-  const markerRef = useRef<any>()
+  const mapRef = useRef<any>(null)
+  const markerRef = useRef<any>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing-key' | 'error'>('loading')
   const [error, setError] = useState('')
   const [pick, setPick] = useState<AmapGroundPick>()

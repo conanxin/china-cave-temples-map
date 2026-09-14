@@ -16,7 +16,7 @@ const CACHE_KEY = 'china-cave-temples-amap-candidates-v1'
 
 export function AmapMap({ sites, selectedId, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<any>()
+  const mapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
   const relationLinesRef = useRef<any[]>([])
   const spatialExtentPolygonsRef = useRef<any[]>([])

@@ -74,13 +74,13 @@ export function AmapGeoreferenceQaMap({
   onTogglePiecewisePreview,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<any>()
+  const mapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
-  const polygonRef = useRef<any>()
-  const pickMarkerRef = useRef<any>()
+  const polygonRef = useRef<any>(null)
+  const pickMarkerRef = useRef<any>(null)
   const errorLinesRef = useRef<any[]>([])
   const comparisonLinesRef = useRef<any[]>([])
-  const robustLineRef = useRef<any>()
+  const robustLineRef = useRef<any>(null)
   const irlsLinesRef = useRef<any[]>([])
   const piecewiseLinesRef = useRef<any[]>([])
   const monteCarloOverlaysRef = useRef<any[]>([])
