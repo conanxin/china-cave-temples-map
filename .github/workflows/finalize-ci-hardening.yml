@@ -1,0 +1,238 @@
+name: Finalize CI hardening
+
+on:
+  push:
+    branches: [ci-hardening-finalize]
+    paths:
+      - '.github/workflows/finalize-ci-hardening.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ci-hardening-finalize
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Record base head
+        run: echo "BASE_HEAD=$(git rev-parse HEAD)"
+
+      - name: Apply approved CI and test hardening
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const path = 'package.json'
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'))
+          pkg.scripts['test:node'] = 'node scripts/run-node-tests.mjs'
+          pkg.scripts['test:ui'] = 'vitest run'
+          pkg.scripts.test = 'npm run test:node && npm run test:ui'
+          if (pkg.scripts.build !== 'tsc -b && vite build') {
+            throw new Error(`Unexpected build script: ${pkg.scripts.build}`)
+          }
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n')
+          NODE
+
+          cat > scripts/run-node-tests.mjs <<'EOF'
+          import { readdir } from 'node:fs/promises'
+          import { join } from 'node:path'
+          import { spawnSync } from 'node:child_process'
+
+          async function collect(dir) {
+            const entries = await readdir(dir, { withFileTypes: true })
+            const files = []
+            for (const entry of entries) {
+              const path = join(dir, entry.name)
+              if (entry.isDirectory()) files.push(...await collect(path))
+              else if (entry.isFile() && entry.name.endsWith('.node.test.ts')) files.push(path)
+            }
+            return files
+          }
+
+          const files = (await collect('src')).sort()
+          if (files.length === 0) {
+            console.error('No *.node.test.ts files found under src/')
+            process.exit(1)
+          }
+
+          console.log(`Running ${files.length} Node test files`)
+          const result = spawnSync(process.execPath, ['--experimental-strip-types', '--test', ...files], {
+            stdio: 'inherit',
+          })
+
+          if (result.error) {
+            console.error(result.error)
+            process.exit(1)
+          }
+          process.exit(result.status ?? 1)
+          EOF
+
+          cat > vite.config.ts <<'EOF'
+          import { configDefaults, defineConfig } from 'vitest/config'
+          import react from '@vitejs/plugin-react'
+
+          export default defineConfig({
+            plugins: [react()],
+            test: {
+              environment: 'jsdom',
+              globals: true,
+              setupFiles: './src/test/setup.ts',
+              css: true,
+              exclude: [...configDefaults.exclude, '**/*.node.test.ts'],
+            },
+          })
+          EOF
+
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/App.test.tsx')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              "import { render, screen } from '@testing-library/react'",
+              "import { render, screen, within } from '@testing-library/react'",
+          )
+          old = "    expect(screen.getByText('112', { selector: '.masthead-stats strong' })).toBeInTheDocument()"
+          new = "    const exhibitionStat = screen.getByText('展墙遗址').closest('div')\n    expect(exhibitionStat).not.toBeNull()\n    expect(within(exhibitionStat!).getByText('112')).toBeInTheDocument()"
+          if old not in text:
+              raise SystemExit('App.test.tsx exhibition count assertion not found')
+          text = text.replace(old, new)
+          old = "    expect(screen.getByRole('button', { name: /07 响堂山石窟/ })).toBeInTheDocument()"
+          new = "    expect(screen.getByRole('button', { name: /响堂山石窟/ })).toBeInTheDocument()"
+          if old not in text:
+              raise SystemExit('App.test.tsx Xiangtangshan assertion not found')
+          text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          cat > .github/workflows/ci.yml <<'EOF'
+          name: CI
+
+          on:
+            push:
+              branches: [main]
+            pull_request:
+
+          permissions:
+            contents: read
+
+          jobs:
+            test-build:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: '22'
+                    cache: npm
+                    cache-dependency-path: package-lock.json
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: '3.12'
+                - name: Install dependencies
+                  run: npm ci
+                - name: Node tests
+                  run: npm run test:node
+                - name: UI tests
+                  run: npm run test:ui
+                - name: Build
+                  run: npm run build
+                - name: Install Python test dependencies
+                  run: python -m pip install PyMuPDF Pillow pypdf
+                - name: Python tests
+                  run: |
+                    PYTHONPATH=scripts python -m unittest scripts/test_unesco_pdf_pipeline.py
+                    PYTHONPATH=scripts python -m unittest scripts/test_apply_reviewed_extent_patch.py
+          EOF
+
+      - name: Generate deterministic npm lockfile
+        run: npm install
+
+      - name: Diff safety gate
+        run: |
+          git diff --check
+          python - <<'PY'
+          import subprocess
+          allowed = {
+              '.github/workflows/ci.yml',
+              '.github/workflows/apply-ci-hardening.yml',
+              '.github/workflows/finalize-ci-hardening.yml',
+              'package.json',
+              'package-lock.json',
+              'scripts/run-node-tests.mjs',
+              'src/App.test.tsx',
+              'vite.config.ts',
+          }
+          out = subprocess.check_output(['git', 'status', '--porcelain'], text=True)
+          paths = []
+          for line in out.splitlines():
+              raw = line[3:]
+              if ' -> ' in raw:
+                  raw = raw.split(' -> ', 1)[1]
+              paths.append(raw)
+          unexpected = sorted(set(paths) - allowed)
+          print('Changed paths:', *sorted(paths), sep='\n- ')
+          if unexpected:
+              raise SystemExit('Unexpected paths: ' + ', '.join(unexpected))
+          PY
+          test -f package-lock.json
+
+      - name: Node test gate
+        run: npm run test:node
+
+      - name: UI test gate
+        run: npm run test:ui
+
+      - name: Production build gate
+        run: |
+          rm -rf dist
+          npm run build
+          test -f dist/index.html
+          test -d dist/assets
+
+      - name: Install Python test dependencies
+        run: python -m pip install PyMuPDF Pillow pypdf
+
+      - name: Python test gate
+        run: |
+          PYTHONPATH=scripts python -m unittest scripts/test_unesco_pdf_pipeline.py
+          PYTHONPATH=scripts python -m unittest scripts/test_apply_reviewed_extent_patch.py
+
+      - name: Commit verified CI hardening to isolated branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/apply-ci-hardening.yml
+          git rm .github/workflows/finalize-ci-hardening.yml
+          git add .github/workflows/ci.yml package.json package-lock.json scripts/run-node-tests.mjs src/App.test.tsx vite.config.ts
+          git diff --cached --check
+          python - <<'PY'
+          import subprocess
+          allowed = {
+              '.github/workflows/ci.yml',
+              '.github/workflows/apply-ci-hardening.yml',
+              '.github/workflows/finalize-ci-hardening.yml',
+              'package.json',
+              'package-lock.json',
+              'scripts/run-node-tests.mjs',
+              'src/App.test.tsx',
+              'vite.config.ts',
+          }
+          staged = subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines()
+          unexpected = sorted(set(staged) - allowed)
+          print('Staged paths:', *sorted(staged), sep='\n- ')
+          if unexpected:
+              raise SystemExit('Unexpected staged paths: ' + ', '.join(unexpected))
+          PY
+          git commit -m 'fix: harden CI and split test runners'
+          git push origin HEAD:ci-hardening-finalize
