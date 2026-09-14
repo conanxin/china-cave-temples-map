@@ -1,0 +1,88 @@
+name: Apply production type fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-production-type-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-build-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply minimal TypeScript build fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          root = Path('.')
+
+          # Allow the repository's existing explicit .ts import style in noEmit mode.
+          tsconfig = root / 'tsconfig.app.json'
+          data = json.loads(tsconfig.read_text(encoding='utf-8'))
+          compiler = data.setdefault('compilerOptions', {})
+          compiler['allowImportingTsExtensions'] = True
+          data['include'] = ['src']
+          data['exclude'] = ['src/**/*.test.ts', 'src/**/*.test.tsx']
+          tsconfig.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          replacements = {
+              'src/components/AmapGeoreferenceQaMap.tsx': [
+                  ('useRef<any>()', 'useRef<any>(null)', 4),
+              ],
+              'src/components/AmapGroundPointPicker.tsx': [
+                  ('useRef<any>()', 'useRef<any>(null)', 2),
+              ],
+              'src/components/GeoreferenceWorkbench.tsx': [
+                  ('const imageUrlRef = useRef<string>()', 'const imageUrlRef = useRef<string | undefined>(undefined)', 1),
+              ],
+              'src/map/AmapMap.tsx': [
+                  ('useRef<any>()', 'useRef<any>(null)', 1),
+              ],
+          }
+
+          for rel, specs in replacements.items():
+              path = root / rel
+              text = path.read_text(encoding='utf-8')
+              for old, new, expected in specs:
+                  actual = text.count(old)
+                  if actual != expected:
+                      raise SystemExit(f'{rel}: expected {expected} occurrences of {old!r}, found {actual}')
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify diff formatting
+        run: git diff --check
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Production build gate
+        run: npm run build
+
+      - name: Commit build-verified fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tsconfig.app.json \
+            src/components/AmapGeoreferenceQaMap.tsx \
+            src/components/AmapGroundPointPicker.tsx \
+            src/components/GeoreferenceWorkbench.tsx \
+            src/map/AmapMap.tsx
+          if git diff --cached --quiet; then
+            echo 'No verified changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix: satisfy production TypeScript build'
+          git push origin HEAD:main
