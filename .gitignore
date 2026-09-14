@@ -4,5 +4,6 @@ dist/
 .env.*.local
 *.tsbuildinfo
 .DS_Store
+
 __pycache__/
-*.py[cod]
+*.pyc

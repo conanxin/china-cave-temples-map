@@ -1,0 +1,92 @@
+import type { SpatialServiceProbe } from './types.ts'
+
+const silkRoadCaveSiteIds = [5, 6, 8, 27]
+
+export const spatialServiceProbes: SpatialServiceProbe[] = [
+  {
+    id: 'unesco-navigator-current-app',
+    sourceAssetId: 'unesco-sites-navigator',
+    title: 'UNESCO Sites Navigator — current Experience Builder app',
+    linkedSiteIds: silkRoadCaveSiteIds,
+    kind: 'experience-app',
+    geometryType: 'unknown',
+    verdict: 'confirmed-current-app',
+    evidence: 'official-primary',
+    observedAt: '2026-09-12',
+    url: 'https://experience.arcgis.com/experience/4f1652275d1f4656964b64a20a7346d3',
+    publisher: 'UNESCO',
+    notes: 'UNESCO World Heritage Centre 当前 Sites Navigator 页面“Launch full screen”直接链接到此 Experience。应用本身确认是当前官方入口，但 Experience URL 不等于可公开查询的边界 FeatureServer。',
+    nextAction: '解析 Experience Builder item / WebMap / operational layers，寻找真正承载 World Heritage property 与 buffer Polygon 的公开服务端点。',
+  },
+  {
+    id: 'unesco-public-points-2021',
+    sourceAssetId: 'unesco-sites-navigator',
+    title: 'Public UNESCO_0 Feature Layer (legacy point dataset)',
+    linkedSiteIds: silkRoadCaveSiteIds,
+    kind: 'feature-service',
+    geometryType: 'point',
+    verdict: 'rejected-boundary-source',
+    evidence: 'service-metadata',
+    observedAt: '2026-09-12',
+    url: 'https://services7.arcgis.com/iEMmryaM5E3wkdnU/ArcGIS/rest/services/UNESCO/FeatureServer/0',
+    publisher: 'ArcGIS Online public service',
+    serviceItemId: '0c055055666d4c18ac82d5a49a5fab4a',
+    layerId: 0,
+    lastEditDate: '2021-03-16',
+    notes: 'ArcGIS REST 元数据明确 Geometry Type = esriGeometryPoint，字段含 latitude / longitude / id_no / area_hect 等。它只能作为点数据线索，不能作为 World Heritage property 或 buffer 边界。',
+    nextAction: '保持排除状态；不得从点或 area_hect 反推 Polygon。',
+  },
+  {
+    id: 'wwf-natural-mixed-world-heritage-polygons',
+    sourceAssetId: 'wwf-sight-natural-mixed-wh-polygons',
+    title: 'WWF SIGHT World Heritage Sites polygon MapServer',
+    linkedSiteIds: silkRoadCaveSiteIds,
+    kind: 'map-service',
+    geometryType: 'polygon',
+    verdict: 'rejected-boundary-source',
+    evidence: 'service-metadata',
+    observedAt: '2026-09-12',
+    url: 'https://wwf-sight-maps.org/arcgis/rest/services/Global/World_Heritage_Sites/MapServer/0',
+    publisher: 'WWF SIGHT / UNESCO World Heritage Centre attribution',
+    serviceItemId: '8d2ad6e0f3884f38b06363862ef7e0f2',
+    layerId: 0,
+    notes: 'ArcGIS REST 元数据确认 Geometry Type = esriGeometryPolygon，但服务 Subject 明确为 UNESCO Natural and Mixed World Heritage Sites。我们的 1442-025/027/028/029 均为文化遗产组成部分，因此该图层不能作为四个石窟的边界来源。',
+    nextAction: '保持排除状态；不得用于四个文化石窟组成遗产。只作为“公开 Polygon 服务并不等于适用边界源”的反例保留。',
+  },
+  {
+    id: 'eea-maratlas-world-heritage-points',
+    sourceAssetId: 'eea-maratlas-world-heritage-points',
+    title: 'EEA Maratlas legacy World Heritage MapServer',
+    linkedSiteIds: silkRoadCaveSiteIds,
+    kind: 'map-service',
+    geometryType: 'point',
+    verdict: 'rejected-boundary-source',
+    evidence: 'service-metadata',
+    observedAt: '2026-09-12',
+    url: 'https://maratlas.discomap.eea.europa.eu/arcgis/rest/services/Maratlas/world_heritage/MapServer/26',
+    publisher: 'European Environment Agency / UNESCO attribution',
+    layerId: 26,
+    notes: '公开 REST 叶子层 .{wh_site} 的 Geometry Type = esriGeometryPoint。该服务可作为旧版世界遗产点位/制图线索，但不能提供 Property / Buffer Polygon。',
+    nextAction: '保持排除状态；不从点图层、符号大小或地图渲染反推边界。',
+  },
+  {
+    id: 'unesco-harmonized-layer-clue',
+    sourceAssetId: 'unesco-sites-navigator',
+    title: 'Sites Navigator harmonized sites layer — implementation architecture clue',
+    linkedSiteIds: silkRoadCaveSiteIds,
+    kind: 'unknown',
+    geometryType: 'mixed',
+    verdict: 'not-publicly-resolved',
+    evidence: 'implementation-partner',
+    observedAt: '2026-09-12',
+    publisher: 'UNESCO implementation-partner case study',
+    notes: '实施架构资料说明 Navigator 存在覆盖 inscribed properties 的 harmonized sites layer，并整合 point / polygon 输入；当前没有得到 UNESCO 官方公开 REST URL，因此只作为服务发现线索，不作为规范边界来源。',
+    nextAction: '从当前 Experience app 的 item data / WebMap 层配置继续解析；只有拿到可公开验证的 Polygon/MultiPolygon REST 端点后才升级为 candidate-boundary-service。',
+  },
+]
+
+export function getSpatialServiceProbesForSite(siteId: number) {
+  return spatialServiceProbes.filter((probe) => probe.linkedSiteIds.includes(siteId))
+}
+
+export const spatialServiceProbeById = new Map(spatialServiceProbes.map((probe) => [probe.id, probe]))

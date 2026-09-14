@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Node tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Python tests
+        run: |
+          python -m unittest scripts/test_unesco_pdf_pipeline.py
+          PYTHONPATH=scripts python -m unittest scripts/test_apply_reviewed_extent_patch.py

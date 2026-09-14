@@ -1,0 +1,16 @@
+{
+  "sourceAssetId": "unesco-1442-nomination-dossier",
+  "remoteUrl": "https://whc.unesco.org/uploads/nominations/1442.pdf",
+  "expectedSizeBytes": 1018487777,
+  "targets": [
+    {"id":"nomination-1442-kizil-annex","siteId":8,"officialReference":"1442-025","kind":"site-annex","startPage":2233,"endPage":2396},
+    {"id":"nomination-1442-kizil-management","siteId":8,"officialReference":"1442-025","kind":"management-plan","startPage":3788,"endPage":3877},
+    {"id":"nomination-1442-bingling-annex","siteId":6,"officialReference":"1442-027","kind":"site-annex","startPage":2448,"endPage":2572},
+    {"id":"nomination-1442-bingling-management","siteId":6,"officialReference":"1442-027","kind":"management-plan","startPage":3967,"endPage":4086},
+    {"id":"nomination-1442-maijishan-annex","siteId":5,"officialReference":"1442-028","kind":"site-annex","startPage":2573,"endPage":2711},
+    {"id":"nomination-1442-maijishan-management","siteId":5,"officialReference":"1442-028","kind":"management-plan","startPage":4087,"endPage":4243},
+    {"id":"nomination-1442-maijishan-buffer-map-hint","siteId":5,"officialReference":"1442-028","kind":"map-page-hint","startPage":4178,"endPage":4180},
+    {"id":"nomination-1442-bin-annex","siteId":27,"officialReference":"1442-029","kind":"site-annex","startPage":2712,"endPage":2773},
+    {"id":"nomination-1442-bin-management","siteId":27,"officialReference":"1442-029","kind":"management-plan","startPage":4244,"endPage":4307}
+  ]
+}
