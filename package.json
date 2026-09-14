@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "npm run test:node && npm run test:ui",
+    "test:watch": "vitest",
+    "test:node": "node scripts/run-node-tests.mjs",
+    "test:ui": "vitest run"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
