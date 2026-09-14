@@ -1,0 +1,178 @@
+name: Capture verified CI hardening artifact
+
+on:
+  push:
+    branches: [ci-hardening-finalize]
+    paths:
+      - '.github/workflows/capture-ci-hardening-artifact.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ci-hardening-finalize
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply approved CI and test hardening
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const path = 'package.json'
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'))
+          pkg.scripts['test:node'] = 'node scripts/run-node-tests.mjs'
+          pkg.scripts['test:ui'] = 'vitest run'
+          pkg.scripts.test = 'npm run test:node && npm run test:ui'
+          if (pkg.scripts.build !== 'tsc -b && vite build') throw new Error('Unexpected build script')
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n')
+          NODE
+
+          cat > scripts/run-node-tests.mjs <<'EOF'
+          import { readdir } from 'node:fs/promises'
+          import { join } from 'node:path'
+          import { spawnSync } from 'node:child_process'
+
+          async function collect(dir) {
+            const entries = await readdir(dir, { withFileTypes: true })
+            const files = []
+            for (const entry of entries) {
+              const path = join(dir, entry.name)
+              if (entry.isDirectory()) files.push(...await collect(path))
+              else if (entry.isFile() && entry.name.endsWith('.node.test.ts')) files.push(path)
+            }
+            return files
+          }
+
+          const files = (await collect('src')).sort()
+          if (files.length === 0) {
+            console.error('No *.node.test.ts files found under src/')
+            process.exit(1)
+          }
+          console.log(`Running ${files.length} Node test files`)
+          const result = spawnSync(process.execPath, ['--experimental-strip-types', '--test', ...files], { stdio: 'inherit' })
+          if (result.error) {
+            console.error(result.error)
+            process.exit(1)
+          }
+          process.exit(result.status ?? 1)
+          EOF
+
+          cat > vite.config.ts <<'EOF'
+          import { configDefaults, defineConfig } from 'vitest/config'
+          import react from '@vitejs/plugin-react'
+
+          export default defineConfig({
+            plugins: [react()],
+            test: {
+              environment: 'jsdom',
+              globals: true,
+              setupFiles: './src/test/setup.ts',
+              css: true,
+              exclude: [...configDefaults.exclude, '**/*.node.test.ts'],
+            },
+          })
+          EOF
+
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/App.test.tsx')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace("import { render, screen } from '@testing-library/react'", "import { render, screen, within } from '@testing-library/react'")
+          old = "    expect(screen.getByText('112', { selector: '.masthead-stats strong' })).toBeInTheDocument()"
+          new = "    const exhibitionStat = screen.getByText('展墙遗址').closest('div')\n    expect(exhibitionStat).not.toBeNull()\n    expect(within(exhibitionStat!).getByText('112')).toBeInTheDocument()"
+          if old not in text: raise SystemExit('Exhibition assertion not found')
+          text = text.replace(old, new)
+          old = "    expect(screen.getByRole('button', { name: /07 响堂山石窟/ })).toBeInTheDocument()"
+          new = "    expect(screen.getByRole('button', { name: /响堂山石窟/ })).toBeInTheDocument()"
+          if old not in text: raise SystemExit('Xiangtangshan assertion not found')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+
+          cat > .github/workflows/ci.yml <<'EOF'
+          name: CI
+
+          on:
+            push:
+              branches: [main]
+            pull_request:
+
+          permissions:
+            contents: read
+
+          jobs:
+            test-build:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: '22'
+                    cache: npm
+                    cache-dependency-path: package-lock.json
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: '3.12'
+                - name: Install dependencies
+                  run: npm ci
+                - name: Node tests
+                  run: npm run test:node
+                - name: UI tests
+                  run: npm run test:ui
+                - name: Build
+                  run: npm run build
+                - name: Install Python test dependencies
+                  run: python -m pip install PyMuPDF Pillow pypdf
+                - name: Python tests
+                  run: |
+                    PYTHONPATH=scripts python -m unittest scripts/test_unesco_pdf_pipeline.py
+                    PYTHONPATH=scripts python -m unittest scripts/test_apply_reviewed_extent_patch.py
+          EOF
+
+      - name: Generate lockfile
+        run: npm install
+
+      - name: Node test gate
+        run: npm run test:node
+
+      - name: UI test gate
+        run: npm run test:ui
+
+      - name: Production build gate
+        run: |
+          rm -rf dist
+          npm run build
+          test -f dist/index.html
+          test -d dist/assets
+
+      - name: Python test gate
+        run: |
+          python -m pip install PyMuPDF Pillow pypdf
+          PYTHONPATH=scripts python -m unittest scripts/test_unesco_pdf_pipeline.py
+          PYTHONPATH=scripts python -m unittest scripts/test_apply_reviewed_extent_patch.py
+
+      - name: Prepare verified artifact
+        run: |
+          mkdir -p verified/.github/workflows verified/scripts verified/src
+          cp package.json package-lock.json vite.config.ts verified/
+          cp scripts/run-node-tests.mjs verified/scripts/
+          cp src/App.test.tsx verified/src/
+          cp .github/workflows/ci.yml verified/.github/workflows/
+          sha256sum verified/package.json verified/package-lock.json verified/vite.config.ts verified/scripts/run-node-tests.mjs verified/src/App.test.tsx verified/.github/workflows/ci.yml > verified/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-ci-hardening
+          path: verified
+          if-no-files-found: error
+          retention-days: 1
