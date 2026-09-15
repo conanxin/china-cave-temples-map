@@ -69,8 +69,9 @@ function unresolvedSite(id: number, name: string): CaveTempleSite {
 
 async function renderReady(sites: CaveTempleSite[], selectedId?: number) {
   vi.stubEnv('VITE_AMAP_KEY', 'test-public-key')
-  render(<AmapMap sites={sites} selectedId={selectedId} onSelect={() => {}} />)
+  const view = render(<AmapMap sites={sites} selectedId={selectedId} onSelect={() => {}} />)
   await waitFor(() => expect(harness.mapConstructed).toHaveBeenCalledTimes(1))
+  return view
 }
 
 afterEach(() => {
@@ -104,6 +105,19 @@ describe('AMap candidate cost guard', () => {
     await waitFor(() => expect(harness.search).toHaveBeenCalledTimes(1))
     expect(harness.search).toHaveBeenCalledWith('测试甲 测试市')
     expect(screen.getByText(/候选缓存 1/)).toBeInTheDocument()
+  })
+
+  it('keeps selected-site lookup available when the selected site is outside the current filtered results', async () => {
+    const selectedSite = unresolvedSite(101, '测试甲')
+    vi.stubEnv('VITE_AMAP_KEY', 'test-public-key')
+    const SelectedSiteAwareMap = AmapMap as any
+    render(<SelectedSiteAwareMap sites={[]} selectedId={101} selectedSite={selectedSite} onSelect={() => {}} />)
+    await waitFor(() => expect(harness.mapConstructed).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByRole('button', { name: '检索当前遗址' }))
+
+    await waitFor(() => expect(harness.search).toHaveBeenCalledTimes(1))
+    expect(harness.search).toHaveBeenCalledWith('测试甲 测试市')
   })
 
   it('shows the remaining batch call count and skips candidates already cached locally', async () => {
@@ -150,6 +164,30 @@ describe('AMap candidate cost guard', () => {
       vi.advanceTimersByTime(2000)
       await Promise.resolve()
     })
+    expect(harness.search).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops a running batch before another request when the current filtered sites change', async () => {
+    const sites = [
+      unresolvedSite(101, '测试甲'),
+      unresolvedSite(102, '测试乙'),
+      unresolvedSite(103, '测试丙'),
+    ]
+    const view = await renderReady(sites, 101)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.useFakeTimers()
+
+    fireEvent.click(screen.getByRole('button', { name: '批量检索当前结果 3 项' }))
+    await act(async () => { await Promise.resolve() })
+    expect(harness.search).toHaveBeenCalledTimes(1)
+
+    view.rerender(<AmapMap sites={[sites[0]]} selectedId={101} onSelect={() => {}} />)
+    await act(async () => {
+      await Promise.resolve()
+      vi.advanceTimersByTime(2000)
+      await Promise.resolve()
+    })
+
     expect(harness.search).toHaveBeenCalledTimes(1)
   })
 })
