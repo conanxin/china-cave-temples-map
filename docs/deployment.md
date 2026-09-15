@@ -20,7 +20,7 @@ The two names have different exposure rules:
 - `VITE_AMAP_KEY` is intentionally client-visible. Vite embeds `VITE_*` values in the browser bundle, and the AMap JS API script URL uses this key.
 - `AMAP_SECURITY_CODE` is server-only. `api/amap-proxy.ts` reads it at request time and appends it to fixed AMap upstream requests as `jscode`.
 
-Do **not** configure `VITE_AMAP_SECURITY_CODE` for public production. A `VITE_*` security-code variable would be exposed to browser JavaScript.
+Do **not** create any client-visible `VITE_*` variable for the AMap security code. Such a value would be exposed to browser JavaScript.
 
 The browser config points AMap service traffic to the same-origin path:
 
