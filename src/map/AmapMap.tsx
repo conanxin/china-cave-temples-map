@@ -9,6 +9,7 @@ import { spatialExtentStyle } from './spatialExtentPresentation'
 interface Props {
   sites: CaveTempleSite[]
   selectedId?: number
+  focusId?: number
   selectedSite?: CaveTempleSite
   onSelect: (id: number) => void
 }
@@ -16,7 +17,7 @@ interface Props {
 const CACHE_KEY = 'china-cave-temples-amap-candidates-v1'
 const BATCH_SEARCH_DELAY_MS = 450
 
-export function AmapMap({ sites, selectedId, selectedSite, onSelect }: Props) {
+export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
@@ -147,12 +148,12 @@ export function AmapMap({ sites, selectedId, selectedSite, onSelect }: Props) {
   }, [onSelect, showSpatialExtents, spatialExtentPolygons, status])
 
   useEffect(() => {
-    if (!selectedId || status !== 'ready' || !mapRef.current) return
-    const target = displayPoints.find(({ site }) => site.id === selectedId)
+    if (!focusId || status !== 'ready' || !mapRef.current) return
+    const target = displayPoints.find(({ site }) => site.id === focusId)
     if (target) {
       mapRef.current.setZoomAndCenter(Math.max(mapRef.current.getZoom(), 8), [target.point.lng, target.point.lat], false, 350)
     }
-  }, [selectedId, status, displayPoints])
+  }, [focusId, status, displayPoints])
 
   const searchCandidate = async (site: CaveTempleSite) => {
     if (status !== 'ready' || !window.AMap) return
