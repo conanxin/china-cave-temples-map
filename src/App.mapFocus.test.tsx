@@ -16,7 +16,7 @@ describe('map focus intent', () => {
     expect(screen.getByTestId('map-focus')).toHaveTextContent('national')
     expect(screen.getByRole('heading', { level: 2, name: '云冈石窟' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /01 云冈石窟/ }))
+    await user.click(screen.getByRole('button', { name: /01云冈石窟/ }))
     expect(screen.getByTestId('map-focus')).toHaveTextContent('1')
   })
 })
