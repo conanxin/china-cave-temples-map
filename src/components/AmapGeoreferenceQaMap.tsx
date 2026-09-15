@@ -99,7 +99,6 @@ export function AmapGeoreferenceQaMap({
   const [showSystematicStress, setShowSystematicStress] = useState(true)
   const [showCheckUncertainty, setShowCheckUncertainty] = useState(true)
   const key = import.meta.env.VITE_AMAP_KEY ?? ''
-  const security = import.meta.env.VITE_AMAP_SECURITY_CODE ?? ''
 
   const controls = useMemo(() => getDualMapControlMarkers(session), [session])
   const projectedBoundary = useMemo(() => getProjectedBoundaryGcj02(session, fit), [fit, session])
@@ -136,7 +135,7 @@ export function AmapGeoreferenceQaMap({
       return
     }
     setStatus('loading')
-    loadAmap(key, security).then((AMap) => {
+    loadAmap(key).then((AMap) => {
       if (cancelled || !containerRef.current) return
       const center = getAmapPickerCenter(site)
       const map = new AMap.Map(containerRef.current, {
@@ -186,7 +185,7 @@ export function AmapGeoreferenceQaMap({
       mapRef.current?.destroy?.()
       mapRef.current = undefined
     }
-  }, [key, security, site])
+  }, [key, site])
 
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current || !window.AMap) return

@@ -24,7 +24,6 @@ export function AmapGroundPointPicker({ site, onUse, onClose }: Props) {
   const [error, setError] = useState('')
   const [pick, setPick] = useState<AmapGroundPick>()
   const key = import.meta.env.VITE_AMAP_KEY ?? ''
-  const security = import.meta.env.VITE_AMAP_SECURITY_CODE ?? ''
 
   useEffect(() => {
     let cancelled = false
@@ -32,7 +31,7 @@ export function AmapGroundPointPicker({ site, onUse, onClose }: Props) {
       setStatus('missing-key')
       return
     }
-    loadAmap(key, security).then((AMap) => {
+    loadAmap(key).then((AMap) => {
       if (cancelled || !containerRef.current) return
       const center = getAmapPickerCenter(site)
       const map = new AMap.Map(containerRef.current, { center, zoom: center[0] === 105.5 && center[1] === 35.8 ? 4.5 : 15, viewMode: '2D', mapStyle: 'amap://styles/normal' })
@@ -61,7 +60,7 @@ export function AmapGroundPointPicker({ site, onUse, onClose }: Props) {
       mapRef.current?.destroy?.()
       mapRef.current = undefined
     }
-  }, [key, security, site])
+  }, [key, site])
 
   return (
     <div className="georef-amap-picker-overlay" role="dialog" aria-modal="true" aria-label="高德地图控制点取点">
