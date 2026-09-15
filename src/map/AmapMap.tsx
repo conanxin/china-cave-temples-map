@@ -27,7 +27,6 @@ export function AmapMap({ sites, selectedId, onSelect }: Props) {
   const [showGroupRelations, setShowGroupRelations] = useState(false)
   const [showSpatialExtents, setShowSpatialExtents] = useState(false)
   const key = import.meta.env.VITE_AMAP_KEY ?? ''
-  const security = import.meta.env.VITE_AMAP_SECURITY_CODE ?? ''
 
   const verifiedSiteCount = useMemo(() => sites.filter((site) => (site.coordinateConfidence === 'verified' && site.lng != null && site.lat != null) || site.subpoints?.some((point) => point.coordinateConfidence === 'verified')).length, [sites])
   const verifiedMarkerCount = useMemo(() => getMapDisplayPoints(sites, {}, false).length, [sites])
@@ -42,7 +41,7 @@ export function AmapMap({ sites, selectedId, onSelect }: Props) {
       return
     }
     setStatus('loading')
-    loadAmap(key, security).then((AMap) => {
+    loadAmap(key).then((AMap) => {
       if (cancelled || !containerRef.current) return
       if (!mapRef.current) {
         mapRef.current = new AMap.Map(containerRef.current, {
@@ -59,7 +58,7 @@ export function AmapMap({ sites, selectedId, onSelect }: Props) {
       setError(reason instanceof Error ? reason.message : String(reason))
     })
     return () => { cancelled = true }
-  }, [key, security])
+  }, [key])
 
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current || !window.AMap) return
@@ -177,7 +176,7 @@ export function AmapMap({ sites, selectedId, onSelect }: Props) {
       </div>
       <div className="map-stage">
         <div ref={containerRef} className="amap-container" />
-        {status === 'missing-key' && <MapNotice title="等待高德 Key" text="复制 .env.example 为 .env.local，填入 VITE_AMAP_KEY 与 VITE_AMAP_SECURITY_CODE。文字数据库、筛选和详情不依赖 Key。" />}
+        {status === 'missing-key' && <MapNotice title="等待高德 Key" text="浏览器端需要 VITE_AMAP_KEY；生产代理的 AMAP_SECURITY_CODE 在部署平台服务端配置。文字数据库、筛选和详情不依赖 Key。" />}
         {status === 'loading' && <MapNotice title="正在加载高德地图" text="地图加载完成后会逐项使用名称 + 行政区检索候选 POI，并把结果缓存到本机浏览器。" />}
         {status === 'error' && <MapNotice title="高德地图加载失败" text={`错误：${error}`} />}
         {status === 'ready' && Object.keys(resolved).length < sites.filter((site) => site.coordinateConfidence !== 'verified').length && (

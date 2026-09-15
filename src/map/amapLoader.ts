@@ -1,14 +1,14 @@
 let promise: Promise<any> | undefined
 
-export function loadAmap(key: string, securityCode: string) {
+export function loadAmap(key: string) {
   if (!key || key === 'AMAP_KEY') return Promise.reject(new Error('AMAP_KEY_MISSING'))
   if (typeof window === 'undefined') return Promise.reject(new Error('AMAP_BROWSER_ONLY'))
   if (window.AMap) return Promise.resolve(window.AMap)
   if (promise) return promise
 
-  window._AMapSecurityConfig = securityCode && securityCode !== 'AMAP_SECURITY_CODE'
-    ? { securityJsCode: securityCode }
-    : undefined
+  window._AMapSecurityConfig = {
+    serviceHost: `${window.location.origin}/_AMapService`,
+  }
 
   promise = new Promise((resolve, reject) => {
     const script = document.createElement('script')

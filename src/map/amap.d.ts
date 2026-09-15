@@ -3,6 +3,8 @@ export {}
 declare global {
   interface Window {
     AMap?: any
-    _AMapSecurityConfig?: { securityJsCode?: string }
+    _AMapSecurityConfig?: {
+      serviceHost?: string
+    }
   }
 }
