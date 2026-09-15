@@ -15,6 +15,7 @@ const emptyFilters: SiteFilters = {
 export default function App() {
   const [filters, setFilters] = useState<SiteFilters>(emptyFilters)
   const [selectedId, setSelectedId] = useState<number>(1)
+  const [mapFocusId, setMapFocusId] = useState<number | undefined>(undefined)
   const [mobilePane, setMobilePane] = useState<'map' | 'index' | 'detail'>('map')
   const [georefOpen, setGeorefOpen] = useState(false)
   const filtered = useMemo(() => filterSites(sites, filters), [filters])
@@ -22,6 +23,7 @@ export default function App() {
   const verifiedCount = sites.filter((site) => site.coordinateConfidence === 'verified' || site.subpoints?.some((point) => point.coordinateConfidence === 'verified')).length
   const select = useCallback((id: number) => {
     setSelectedId(id)
+    setMapFocusId(id)
     if (window.innerWidth < 920) setMobilePane('detail')
   }, [])
 
@@ -53,7 +55,7 @@ export default function App() {
           <SiteIndex sites={filtered} selectedId={selectedId} onSelect={select} />
         </aside>
         <div className={`map-column mobile-${mobilePane === 'map' ? 'show' : 'hide'}`}>
-          <AmapMap sites={filtered} selectedId={selectedId} selectedSite={selected} onSelect={select} />
+          <AmapMap sites={filtered} selectedId={selectedId} focusId={mapFocusId} selectedSite={selected} onSelect={select} />
         </div>
         <div className={`detail-column mobile-${mobilePane === 'detail' ? 'show' : 'hide'}`}>
           <SiteDetail site={selected} />
