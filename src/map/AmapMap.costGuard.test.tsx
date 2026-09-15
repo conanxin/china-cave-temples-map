@@ -68,6 +68,7 @@ function unresolvedSite(id: number, name: string): CaveTempleSite {
 }
 
 async function renderReady(sites: CaveTempleSite[], selectedId?: number) {
+  vi.stubEnv('VITE_AMAP_KEY', 'test-public-key')
   render(<AmapMap sites={sites} selectedId={selectedId} onSelect={() => {}} />)
   await waitFor(() => expect(harness.mapConstructed).toHaveBeenCalledTimes(1))
 }
@@ -78,6 +79,7 @@ afterEach(() => {
   harness.search.mockClear()
   harness.mapConstructed.mockClear()
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   vi.useRealTimers()
 })
 
