@@ -1,0 +1,60 @@
+name: Apply AMap loader callsite fix
+
+on:
+  push:
+    branches: [feat/amap-secure-proxy]
+    paths:
+      - '.github/workflows/apply-amap-loader-callsites.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/amap-secure-proxy
+          fetch-depth: 0
+
+      - name: Apply exact callsite updates
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path('src/components/AmapGeoreferenceQaMap.tsx'): [
+                  ("  const security = import.meta.env.VITE_AMAP_SECURITY_CODE ?? ''\n", ''),
+                  ('    loadAmap(key, security).then((AMap) => {', '    loadAmap(key).then((AMap) => {'),
+                  ('  }, [key, security, site])', '  }, [key, site])'),
+              ],
+              Path('src/components/AmapGroundPointPicker.tsx'): [
+                  ("  const security = import.meta.env.VITE_AMAP_SECURITY_CODE ?? ''\n", ''),
+                  ('    loadAmap(key, security).then((AMap) => {', '    loadAmap(key).then((AMap) => {'),
+                  ('  }, [key, security, site])', '  }, [key, site])'),
+              ],
+          }
+
+          for path, edits in replacements.items():
+              text = path.read_text(encoding='utf-8')
+              for old, new in edits:
+                  count = text.count(old)
+                  if count != 1:
+                      raise SystemExit(f'{path}: expected exactly 1 occurrence, found {count}: {old!r}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+
+          git diff --check
+          test -z "$(grep -n 'VITE_AMAP_SECURITY_CODE\|loadAmap(key, security)' src/components/AmapGeoreferenceQaMap.tsx src/components/AmapGroundPointPicker.tsx || true)"
+
+      - name: Commit exact callsite updates
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/AmapGeoreferenceQaMap.tsx src/components/AmapGroundPointPicker.tsx
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          git diff --cached --check
+          git commit -m 'fix: update AMap loader call sites'
+          git push origin HEAD:feat/amap-secure-proxy
