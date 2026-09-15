@@ -53,7 +53,7 @@ export default function App() {
           <SiteIndex sites={filtered} selectedId={selectedId} onSelect={select} />
         </aside>
         <div className={`map-column mobile-${mobilePane === 'map' ? 'show' : 'hide'}`}>
-          <AmapMap sites={filtered} selectedId={selectedId} onSelect={select} />
+          <AmapMap sites={filtered} selectedId={selectedId} selectedSite={selected} onSelect={select} />
         </div>
         <div className={`detail-column mobile-${mobilePane === 'detail' ? 'show' : 'hide'}`}>
           <SiteDetail site={selected} />
