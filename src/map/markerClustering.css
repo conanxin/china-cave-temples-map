@@ -1,0 +1,24 @@
+.amap-site-cluster {
+  width: 38px;
+  height: 38px;
+  border: 2px solid #f8f2e7;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  appearance: none;
+  padding: 0;
+  cursor: pointer;
+  background: var(--red);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(31, 20, 15, 0.28);
+  font: 800 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  transform: scale(0.96);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.amap-site-cluster:hover,
+.amap-site-cluster:focus-visible {
+  transform: scale(1.08);
+  box-shadow: 0 5px 17px rgba(31, 20, 15, 0.34);
+  outline: 3px solid rgba(255, 255, 255, 0.72);
+}
