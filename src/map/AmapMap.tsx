@@ -59,8 +59,8 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
       if (cancelled || !containerRef.current) return
       if (!mapRef.current) {
         mapRef.current = new AMap.Map(containerRef.current, {
-          zoom: 4.3,
-          center: [105.5, 35.8],
+          zoom: 4.1,
+          center: [105.5, 37.5],
           viewMode: '2D',
           mapStyle: 'amap://styles/normal',
         })
