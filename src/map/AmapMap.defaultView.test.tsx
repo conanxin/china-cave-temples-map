@@ -60,14 +60,14 @@ afterEach(() => {
 })
 
 describe('AMap default China view', () => {
-  it('keeps the national view on first load even when the detail panel has a default selected site', async () => {
+  it('opens with a full-China framing margin while retaining the default selected detail', async () => {
     vi.stubEnv('VITE_AMAP_KEY', 'test-public-key')
     const view = render(<AmapMap sites={[verifiedSite]} selectedId={1} onSelect={() => {}} />)
 
     await waitFor(() => expect(harness.mapOptions).toHaveBeenCalledTimes(1))
     expect(harness.mapOptions).toHaveBeenCalledWith(expect.objectContaining({
-      center: [105.5, 35.8],
-      zoom: 4.3,
+      center: [105.5, 37.5],
+      zoom: 4.1,
     }))
     expect(harness.zoomAndCenter).not.toHaveBeenCalled()
 
