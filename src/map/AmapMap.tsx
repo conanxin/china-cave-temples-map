@@ -9,13 +9,14 @@ import { spatialExtentStyle } from './spatialExtentPresentation'
 interface Props {
   sites: CaveTempleSite[]
   selectedId?: number
+  selectedSite?: CaveTempleSite
   onSelect: (id: number) => void
 }
 
 const CACHE_KEY = 'china-cave-temples-amap-candidates-v1'
 const BATCH_SEARCH_DELAY_MS = 450
 
-export function AmapMap({ sites, selectedId, onSelect }: Props) {
+export function AmapMap({ sites, selectedId, selectedSite, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const markersRef = useRef<any[]>([])
@@ -39,7 +40,12 @@ export function AmapMap({ sites, selectedId, onSelect }: Props) {
   const groupRelations = useMemo(() => getGroupRelationLines(sites), [sites])
   const spatialExtentPolygons = useMemo(() => getSpatialExtentPolygons(sites), [sites])
   const searchableSites = useMemo(() => sites.filter((site) => site.coordinateConfidence !== 'verified' && !resolved[site.id]), [resolved, sites])
-  const selectedSearchSite = useMemo(() => selectedId == null ? undefined : searchableSites.find((site) => site.id === selectedId), [searchableSites, selectedId])
+  const selectedSearchSite = useMemo(() => {
+    if (selectedId == null) return undefined
+    const site = selectedSite?.id === selectedId ? selectedSite : sites.find((candidate) => candidate.id === selectedId)
+    if (!site || site.coordinateConfidence === 'verified' || resolved[site.id]) return undefined
+    return site
+  }, [resolved, selectedId, selectedSite, sites])
 
   useEffect(() => {
     let cancelled = false
@@ -70,6 +76,10 @@ export function AmapMap({ sites, selectedId, onSelect }: Props) {
   useEffect(() => () => {
     stopBatchRef.current = true
   }, [])
+
+  useEffect(() => {
+    stopBatchRef.current = true
+  }, [sites])
 
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current || !window.AMap) return
