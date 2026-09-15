@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CaveTempleSite } from '../data/types'
 import { loadAmap } from './amapLoader'
+import { clusterMapDisplayPoints } from './clusterMapDisplayPoints'
 import { getMapDisplayPoints, type CandidateMapPoint } from './getMapDisplayPoints'
 import { getGroupRelationLines } from './getGroupRelationLines'
 import { getSpatialExtentPolygons } from './getSpatialExtentPolygons'
 import { spatialExtentStyle } from './spatialExtentPresentation'
+import './markerClustering.css'
 
 interface Props {
   sites: CaveTempleSite[]
@@ -16,6 +18,7 @@ interface Props {
 
 const CACHE_KEY = 'china-cave-temples-amap-candidates-v1'
 const BATCH_SEARCH_DELAY_MS = 450
+const DEFAULT_MAP_ZOOM = 4.1
 
 export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -33,11 +36,13 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
   const [singleSearching, setSingleSearching] = useState(false)
   const [batchRunning, setBatchRunning] = useState(false)
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 })
+  const [mapZoom, setMapZoom] = useState(DEFAULT_MAP_ZOOM)
   const key = import.meta.env.VITE_AMAP_KEY ?? ''
 
   const verifiedSiteCount = useMemo(() => sites.filter((site) => (site.coordinateConfidence === 'verified' && site.lng != null && site.lat != null) || site.subpoints?.some((point) => point.coordinateConfidence === 'verified')).length, [sites])
   const verifiedMarkerCount = useMemo(() => getMapDisplayPoints(sites, {}, false).length, [sites])
   const displayPoints = useMemo(() => getMapDisplayPoints(sites, resolved, showCandidates), [sites, resolved, showCandidates])
+  const displayItems = useMemo(() => clusterMapDisplayPoints(displayPoints, mapZoom, selectedId), [displayPoints, mapZoom, selectedId])
   const groupRelations = useMemo(() => getGroupRelationLines(sites), [sites])
   const spatialExtentPolygons = useMemo(() => getSpatialExtentPolygons(sites), [sites])
   const searchableSites = useMemo(() => sites.filter((site) => site.coordinateConfidence !== 'verified' && !resolved[site.id]), [resolved, sites])
@@ -59,7 +64,7 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
       if (cancelled || !containerRef.current) return
       if (!mapRef.current) {
         mapRef.current = new AMap.Map(containerRef.current, {
-          zoom: 4.1,
+          zoom: DEFAULT_MAP_ZOOM,
           center: [105.5, 37.5],
           viewMode: '2D',
           mapStyle: 'amap://styles/normal',
@@ -74,6 +79,15 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
     return () => { cancelled = true }
   }, [key])
 
+  useEffect(() => {
+    if (status !== 'ready' || !mapRef.current) return
+    const map = mapRef.current
+    const syncZoom = () => setMapZoom(map.getZoom())
+    syncZoom()
+    map.on?.('zoomend', syncZoom)
+    return () => map.off?.('zoomend', syncZoom)
+  }, [status])
+
   useEffect(() => () => {
     stopBatchRef.current = true
   }, [])
@@ -85,7 +99,28 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current || !window.AMap) return
     markersRef.current.forEach((marker) => marker.setMap(null))
-    markersRef.current = displayPoints.map(({ site, point }) => {
+    markersRef.current = displayItems.map((item) => {
+      if (item.kind === 'cluster') {
+        const el = document.createElement('button')
+        el.className = 'amap-site-cluster'
+        el.textContent = String(item.count)
+        const names = [...new Set(item.points.map(({ site }) => site.name))]
+        el.title = `聚合 ${item.count} 个核验标记 · ${names.slice(0, 3).join('、')}${names.length > 3 ? '…' : ''} · 点击放大`
+        const marker = new window.AMap.Marker({
+          position: [item.lng, item.lat],
+          content: el,
+          offset: new window.AMap.Pixel(-19, -19),
+          zIndex: 120,
+        })
+        marker.on('click', () => {
+          const nextZoom = Math.min(Math.max(mapRef.current.getZoom() + 2, 6), 8)
+          mapRef.current.setZoomAndCenter(nextZoom, [item.lng, item.lat], false, 300)
+        })
+        marker.setMap(mapRef.current)
+        return marker
+      }
+
+      const { site, point } = item.point
       const el = document.createElement('button')
       el.className = `amap-site-marker ${point.confidence} ${selectedId === site.id ? 'selected' : ''}`
       el.textContent = point.markerLabel
@@ -100,7 +135,7 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
       marker.setMap(mapRef.current)
       return marker
     })
-  }, [displayPoints, onSelect, selectedId, status])
+  }, [displayItems, onSelect, selectedId, status])
 
   useEffect(() => {
     if (status !== 'ready' || !mapRef.current || !window.AMap) return
