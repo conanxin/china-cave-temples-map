@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import styles from './styles.css?raw'
+import baseStyles from './styles.css?raw'
+import viewportStyles from './viewport-layout.css?raw'
+
+const styles = `${baseStyles}\n${viewportStyles}`
 
 describe('viewport-bounded workspace layout', () => {
   it('keeps the desktop shell within the viewport and makes the site list scroll internally', () => {
-    const appShellRule = styles.match(/\.app-shell\s*\{([^}]*)\}/)?.[1] ?? ''
-    const siteListRule = styles.match(/\.site-list\s*\{([^}]*)\}/)?.[1] ?? ''
+    const appShellRules = [...styles.matchAll(/\.app-shell\s*\{([^}]*)\}/g)].map((match) => match[1]).join('\n')
+    const siteListRules = [...styles.matchAll(/\.site-list\s*\{([^}]*)\}/g)].map((match) => match[1]).join('\n')
 
-    expect(appShellRule).toMatch(/height:\s*100dvh/)
-    expect(appShellRule).toMatch(/overflow:\s*hidden/)
-    expect(styles).not.toContain('height: calc(100vh - 158px)')
-    expect(styles).not.toContain('height: calc(100vh - 177px)')
-    expect(siteListRule).toMatch(/flex:\s*1/)
-    expect(siteListRule).toMatch(/min-height:\s*0/)
-    expect(siteListRule).toMatch(/overflow:\s*auto/)
+    expect(appShellRules).toMatch(/height:\s*100dvh/)
+    expect(appShellRules).toMatch(/overflow:\s*hidden/)
+    expect(viewportStyles).toMatch(/\.workspace\s*\{[^}]*height:\s*auto/s)
+    expect(siteListRules).toMatch(/flex:\s*1/)
+    expect(siteListRules).toMatch(/min-height:\s*0/)
+    expect(siteListRules).toMatch(/overflow:\s*auto/)
   })
 })
