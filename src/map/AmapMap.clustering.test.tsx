@@ -85,7 +85,7 @@ afterEach(() => {
 })
 
 describe('AMap marker clustering', () => {
-  it('renders nearby unselected points as one count bubble while keeping the selected site visible', async () => {
+  it('renders cluster counts with a distinct 处 suffix while preserving the selected site code', async () => {
     vi.stubEnv('VITE_AMAP_KEY', 'test-public-key')
     render(<AmapMap
       sites={[
@@ -100,7 +100,8 @@ describe('AMap marker clustering', () => {
     await waitFor(() => expect(activeContents()).toHaveLength(2))
     const contents = activeContents()
     expect(contents.some((element) => element.classList.contains('amap-site-marker') && element.textContent === '01')).toBe(true)
-    expect(contents.some((element) => element.classList.contains('amap-site-cluster') && element.textContent === '2')).toBe(true)
+    expect(contents.some((element) => element.classList.contains('amap-site-cluster') && element.textContent === '2处')).toBe(true)
+    expect(contents.some((element) => element.classList.contains('amap-site-cluster') && element.textContent === '2')).toBe(false)
   })
 
   it('re-renders clusters as individual markers after zooming to detail level', async () => {
