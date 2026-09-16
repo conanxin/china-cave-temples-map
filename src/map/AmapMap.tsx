@@ -18,6 +18,7 @@ interface Props {
 
 const CACHE_KEY = 'china-cave-temples-amap-candidates-v1'
 const BATCH_SEARCH_DELAY_MS = 450
+const SEARCH_TIMEOUT_MS = 20_000
 const DEFAULT_MAP_ZOOM = 4.1
 
 export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: Props) {
@@ -27,6 +28,7 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
   const relationLinesRef = useRef<any[]>([])
   const spatialExtentPolygonsRef = useRef<any[]>([])
   const stopBatchRef = useRef(false)
+  const mountedRef = useRef(false)
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'missing-key' | 'error'>('idle')
   const [error, setError] = useState('')
   const [resolved, setResolved] = useState<Record<number, CandidateMapPoint>>(() => readCache())
@@ -36,6 +38,7 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
   const [singleSearching, setSingleSearching] = useState(false)
   const [batchRunning, setBatchRunning] = useState(false)
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 })
+  const [searchFeedback, setSearchFeedback] = useState('')
   const [mapZoom, setMapZoom] = useState(DEFAULT_MAP_ZOOM)
   const key = import.meta.env.VITE_AMAP_KEY ?? ''
 
@@ -88,8 +91,12 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
     return () => map.off?.('zoomend', syncZoom)
   }, [status])
 
-  useEffect(() => () => {
-    stopBatchRef.current = true
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      stopBatchRef.current = true
+    }
   }, [])
 
   useEffect(() => {
@@ -191,23 +198,35 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
   }, [focusId, status, displayPoints])
 
   const searchCandidate = async (site: CaveTempleSite) => {
-    if (status !== 'ready' || !window.AMap) return
-    const point = await resolveWithAmap(window.AMap, site)
-    if (!point) return
-    setResolved((current) => {
-      const next = { ...current, [site.id]: point }
-      writeCache(next)
-      return next
-    })
+    const result: CandidateSearchResult = status === 'ready' && window.AMap
+      ? await resolveWithAmap(window.AMap, site)
+      : { status: 'failed' }
+    if (!mountedRef.current) return result.status
+    const messages = {
+      found: '找到候选，已缓存；默认隐藏，需人工复核。',
+      empty: '无合适结果；可稍后手动检索。',
+      failed: '请求失败；未自动重试，可稍后手动检索。',
+      timeout: '检索超时（20 秒）；已结束等待，未自动重试。',
+    }
+    setSearchFeedback(`${site.name}：${messages[result.status]}`)
+    if (result.status === 'found') {
+      setResolved((current) => {
+        const next = { ...current, [site.id]: result.point }
+        writeCache(next)
+        return next
+      })
+    }
+    return result.status
   }
 
   const searchSelectedSite = async () => {
     if (!selectedSearchSite || singleSearching || batchRunning) return
     setSingleSearching(true)
+    setSearchFeedback(`正在检索 ${selectedSearchSite.name}；最多等待 20 秒。`)
     try {
       await searchCandidate(selectedSearchSite)
     } finally {
-      setSingleSearching(false)
+      if (mountedRef.current) setSingleSearching(false)
     }
   }
 
@@ -221,21 +240,33 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
     stopBatchRef.current = false
     setBatchProgress({ done: 0, total: targets.length })
     setBatchRunning(true)
+    setSearchFeedback('批量检索已开始；每项最多等待 20 秒。')
     try {
       for (let index = 0; index < targets.length; index += 1) {
         if (stopBatchRef.current) break
-        await searchCandidate(targets[index])
+        const outcome = await searchCandidate(targets[index])
+        if (!mountedRef.current) break
         setBatchProgress((current) => ({ ...current, done: index + 1 }))
+        if (outcome === 'failed' || outcome === 'timeout') {
+          setSearchFeedback((current) => `${current} 批量已结束，剩余项目未检索。`)
+          break
+        }
         if (stopBatchRef.current || index === targets.length - 1) break
         await delay(BATCH_SEARCH_DELAY_MS)
       }
     } finally {
-      setBatchRunning(false)
+      if (mountedRef.current) {
+        setBatchRunning(false)
+        if (stopBatchRef.current) {
+          setSearchFeedback((current) => `已停止检索，剩余项目未检索。${current.startsWith('已请求停止') ? '已完成的候选缓存已保留。' : current}`)
+        }
+      }
     }
   }
 
   const stopBatchSearch = () => {
     stopBatchRef.current = true
+    setSearchFeedback('已请求停止，等待当前请求结束（最多至本次请求的 20 秒上限）；不会发起下一项。')
   }
 
   const fit = () => {
@@ -260,6 +291,7 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
           <button type="button" onClick={fit} disabled={!displayPoints.length}>适配当前结果</button>
         </div>
       </div>
+      {searchFeedback && <p className="map-search-feedback" role="status">{searchFeedback}</p>}
       <div className="map-stage">
         <div ref={containerRef} className="amap-container" />
         {status === 'missing-key' && <MapNotice title="等待高德 Key" text="浏览器端需要 VITE_AMAP_KEY；生产代理的 AMAP_SECURITY_CODE 在部署平台服务端配置。文字数据库、筛选和详情不依赖 Key。" />}
@@ -280,24 +312,50 @@ function MapNotice({ title, text }: { title: string, text: string }) {
 
 function delay(ms: number) { return new Promise((resolve) => setTimeout(resolve, ms)) }
 
-function resolveWithAmap(AMap: any, site: CaveTempleSite): Promise<CandidateMapPoint | null> {
+type CandidateSearchResult =
+  | { status: 'found'; point: CandidateMapPoint }
+  | { status: 'empty' | 'failed' | 'timeout' }
+
+function resolveWithAmap(AMap: any, site: CaveTempleSite): Promise<CandidateSearchResult> {
   return new Promise((resolve) => {
-    const place = new AMap.PlaceSearch({ pageSize: 8, pageIndex: 1, city: site.prefecture, citylimit: false })
-    place.search(site.amapQuery, (status: string, result: any) => {
-      if (status !== 'complete' || !result?.poiList?.pois?.length) return resolve(null)
-      const candidates = result.poiList.pois as any[]
-      const best = candidates
-        .map((poi) => ({ poi, score: scorePoi(poi, site) }))
-        .sort((a, b) => b.score - a.score)[0]
-      if (!best || best.score < 3 || !best.poi.location) return resolve(null)
-      resolve({
-        siteId: site.id,
-        lng: Number(best.poi.location.lng),
-        lat: Number(best.poi.location.lat),
-        confidence: 'probable',
-        source: `高德 POI 候选：${best.poi.name ?? site.name}`,
+    let settled = false
+    const finish = (result: CandidateSearchResult) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+    const timer = setTimeout(() => finish({ status: 'timeout' }), SEARCH_TIMEOUT_MS)
+    try {
+      const place = new AMap.PlaceSearch({ pageSize: 8, pageIndex: 1, city: site.prefecture, citylimit: false })
+      place.search(site.amapQuery, (status: string, result: any) => {
+        if (settled) return
+        try {
+          if (status === 'no_data') return finish({ status: 'empty' })
+          if (status !== 'complete') return finish({ status: 'failed' })
+          if (!result?.poiList?.pois?.length) return finish({ status: 'empty' })
+          const candidates = result.poiList.pois as any[]
+          const best = candidates
+            .map((poi) => ({ poi, score: scorePoi(poi, site) }))
+            .sort((a, b) => b.score - a.score)[0]
+          if (!best || best.score < 3 || !best.poi.location) return finish({ status: 'empty' })
+          finish({
+            status: 'found',
+            point: {
+              siteId: site.id,
+              lng: Number(best.poi.location.lng),
+              lat: Number(best.poi.location.lat),
+              confidence: 'probable',
+              source: `高德 POI 候选：${best.poi.name ?? site.name}`,
+            },
+          })
+        } catch {
+          finish({ status: 'failed' })
+        }
       })
-    })
+    } catch {
+      finish({ status: 'failed' })
+    }
   })
 }
 

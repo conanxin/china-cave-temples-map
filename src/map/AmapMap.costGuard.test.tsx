@@ -6,6 +6,7 @@ import { AmapMap } from './AmapMap'
 const harness = vi.hoisted(() => ({
   search: vi.fn(),
   mapConstructed: vi.fn(),
+  respond: undefined as undefined | ((callback: (status: string, result: any) => void) => void),
 }))
 
 vi.mock('./amapLoader', () => ({
@@ -20,6 +21,7 @@ vi.mock('./amapLoader', () => ({
     class FakePlaceSearch {
       search(query: string, callback: (status: string, result: any) => void) {
         harness.search(query)
+        if (harness.respond) return harness.respond(callback)
         const name = String(query).split(' ')[0]
         callback('complete', {
           poiList: {
@@ -79,12 +81,138 @@ afterEach(() => {
   delete window.AMap
   harness.search.mockClear()
   harness.mapConstructed.mockClear()
+  harness.respond = undefined
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
   vi.useRealTimers()
 })
 
 describe('AMap candidate cost guard', () => {
+  it('recovers after 20 seconds without a callback and ignores a late result during a new search', async () => {
+    const callbacks: Array<(status: string, result: any) => void> = []
+    harness.respond = (callback) => { callbacks.push(callback) }
+    await renderReady([unresolvedSite(101, '测试甲')], 101)
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '检索当前遗址' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(19999) })
+    expect(screen.getByRole('button', { name: '检索当前遗址' })).toBeDisabled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(screen.getByRole('status')).toHaveTextContent('超时')
+    expect(screen.getByRole('button', { name: '检索当前遗址' })).toBeEnabled()
+    expect(harness.search).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: '检索当前遗址' }))
+    await act(async () => { callbacks[0]('complete', candidateResult()) })
+    expect(localStorage.getItem(CACHE_KEY)).toBeNull()
+    expect(screen.getByRole('button', { name: '检索当前遗址' })).toBeDisabled()
+    await act(async () => { callbacks[1]('complete', candidateResult()) })
+    expect(screen.getByRole('status')).toHaveTextContent('找到候选')
+    expect(JSON.parse(localStorage.getItem(CACHE_KEY)!)[101].confidence).toBe('probable')
+    expect(screen.getByRole('button', { name: '预览候选' })).toBeEnabled()
+  })
+
+  it.each([
+    ['no_data', {}, '无合适结果'],
+    ['complete', { poiList: { pois: [] } }, '无合适结果'],
+    ['error', { info: 'SERVICE_NOT_AVAILABLE' }, '请求失败'],
+  ])('reports %s without automatic retries', async (status, result, message) => {
+    harness.respond = (callback) => { callback(status, result) }
+    await renderReady([unresolvedSite(101, '测试甲')], 101)
+    fireEvent.click(screen.getByRole('button', { name: '检索当前遗址' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(message))
+    expect(screen.getByRole('button', { name: '检索当前遗址' })).toBeEnabled()
+    expect(harness.search).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(CACHE_KEY)).toBeNull()
+  })
+
+  it('reports a synchronous SDK exception and restores the controls', async () => {
+    harness.respond = () => { throw new Error('SDK unavailable') }
+    await renderReady([unresolvedSite(101, '测试甲')], 101)
+    fireEvent.click(screen.getByRole('button', { name: '检索当前遗址' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('请求失败'))
+    expect(screen.getByRole('button', { name: '检索当前遗址' })).toBeEnabled()
+  })
+
+  it('stops a hung batch at timeout without starting remaining sites', async () => {
+    harness.respond = () => {}
+    await renderReady([unresolvedSite(101, '测试甲'), unresolvedSite(102, '测试乙')], 101)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '批量检索当前结果 2 项' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
+    expect(harness.search).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('status')).toHaveTextContent('超时')
+    expect(screen.getByRole('button', { name: '批量检索当前结果 2 项' })).toBeEnabled()
+  })
+
+  it('preserves an in-flight result after stop and never sends the next request', async () => {
+    let finish!: (status: string, result: any) => void
+    harness.respond = (callback) => { finish = callback }
+    await renderReady([unresolvedSite(101, '测试甲'), unresolvedSite(102, '测试乙')], 101)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '批量检索当前结果 2 项' }))
+    fireEvent.click(screen.getByRole('button', { name: '停止检索' }))
+    expect(screen.getByRole('status')).toHaveTextContent('等待当前请求结束')
+    await act(async () => { finish('complete', candidateResult()); await vi.advanceTimersByTimeAsync(30000) })
+    expect(harness.search).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('status')).toHaveTextContent('已停止')
+    expect(JSON.parse(localStorage.getItem(CACHE_KEY)!)[101]).toBeDefined()
+    expect(screen.getByRole('button', { name: '批量检索当前结果 1 项' })).toBeEnabled()
+  })
+
+  it('ends a batch on service failure without retrying or sending remaining sites', async () => {
+    harness.respond = (callback) => { callback('error', {}) }
+    await renderReady([unresolvedSite(101, '测试甲'), unresolvedSite(102, '测试乙')], 101)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: '批量检索当前结果 2 项' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('批量已结束'))
+    expect(screen.getByRole('status')).toHaveTextContent('请求失败')
+    expect(harness.search).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: '批量检索当前结果 2 项' })).toBeEnabled()
+  })
+
+  it('eventually releases stopped controls even if the in-flight callback never arrives', async () => {
+    harness.respond = () => {}
+    await renderReady([unresolvedSite(101, '测试甲'), unresolvedSite(102, '测试乙')], 101)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '批量检索当前结果 2 项' }))
+    fireEvent.click(screen.getByRole('button', { name: '停止检索' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000) })
+    expect(screen.getByRole('button', { name: '检索当前遗址' })).toBeEnabled()
+    expect(screen.getByRole('status')).toHaveTextContent('已停止')
+    expect(screen.getByRole('status')).toHaveTextContent('超时')
+    expect(harness.search).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not cache a response or continue a batch after the map unmounts', async () => {
+    let finish!: (status: string, result: any) => void
+    harness.respond = (callback) => { finish = callback }
+    const view = await renderReady([unresolvedSite(101, '测试甲'), unresolvedSite(102, '测试乙')], 101)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '批量检索当前结果 2 项' }))
+    view.unmount()
+    await act(async () => { finish('complete', candidateResult()); await vi.advanceTimersByTimeAsync(30000) })
+    expect(localStorage.getItem(CACHE_KEY)).toBeNull()
+    expect(harness.search).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('waits 450ms after a delayed response before searching the next site', async () => {
+    let finish!: (status: string, result: any) => void
+    harness.respond = (callback) => { finish = callback }
+    await renderReady([unresolvedSite(101, '测试甲'), unresolvedSite(102, '测试乙')], 101)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: '批量检索当前结果 2 项' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); finish('no_data', {}) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(449) })
+    expect(harness.search).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(harness.search).toHaveBeenCalledTimes(2)
+    await act(async () => { finish('no_data', {}) })
+  })
   it('does not automatically search unresolved sites after the map becomes ready', async () => {
     const sites = [unresolvedSite(101, '测试甲'), unresolvedSite(102, '测试乙')]
     await renderReady(sites, 101)
@@ -191,3 +319,7 @@ describe('AMap candidate cost guard', () => {
     expect(harness.search).toHaveBeenCalledTimes(1)
   })
 })
+
+function candidateResult() {
+  return { poiList: { pois: [{ name: '测试甲', location: { lng: 110, lat: 35 }, pname: '测试省', cityname: '测试市', adname: '测试县', address: '测试县' }] } }
+}
