@@ -1,24 +1,27 @@
 .amap-site-cluster {
-  width: 38px;
-  height: 38px;
-  border: 2px solid #f8f2e7;
-  border-radius: 50%;
+  min-width: 42px;
+  height: 32px;
+  border: 1.5px solid var(--red);
+  border-radius: 999px;
   display: grid;
   place-items: center;
   appearance: none;
-  padding: 0;
+  padding: 0 8px;
   cursor: pointer;
-  background: var(--red);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(31, 20, 15, 0.28);
-  font: 800 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  transform: scale(0.96);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  background: rgba(248, 245, 237, 0.96);
+  color: var(--red-dark);
+  box-shadow: 0 3px 11px rgba(31, 20, 15, 0.18);
+  font: 800 10px/1 "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  white-space: nowrap;
+  transform: scale(0.98);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .amap-site-cluster:hover,
 .amap-site-cluster:focus-visible {
-  transform: scale(1.08);
-  box-shadow: 0 5px 17px rgba(31, 20, 15, 0.34);
-  outline: 3px solid rgba(255, 255, 255, 0.72);
+  transform: scale(1.06);
+  background: #fffaf1;
+  box-shadow: 0 5px 16px rgba(31, 20, 15, 0.24);
+  outline: 2px solid rgba(114, 46, 41, 0.16);
+  outline-offset: 2px;
 }
