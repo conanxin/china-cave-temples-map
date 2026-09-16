@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CaveTempleSite } from '../data/types'
 import { AmapMap } from './AmapMap'
@@ -119,8 +119,10 @@ describe('AMap marker clustering', () => {
     await waitFor(() => expect(activeContents()).toHaveLength(2))
     expect(harness.listeners.zoomend).toBeTypeOf('function')
 
-    harness.map.zoom = 7
-    harness.listeners.zoomend?.()
+    act(() => {
+      harness.map.zoom = 7
+      harness.listeners.zoomend?.()
+    })
 
     await waitFor(() => expect(activeContents()).toHaveLength(3))
     expect(activeContents().map((element) => element.textContent).sort()).toEqual(['01', '02', '03'])
