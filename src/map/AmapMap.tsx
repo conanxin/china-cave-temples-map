@@ -103,7 +103,7 @@ export function AmapMap({ sites, selectedId, focusId, selectedSite, onSelect }: 
       if (item.kind === 'cluster') {
         const el = document.createElement('button')
         el.className = 'amap-site-cluster'
-        el.textContent = String(item.count)
+        el.textContent = `${item.count}处`
         const names = [...new Set(item.points.map(({ site }) => site.name))]
         el.title = `聚合 ${item.count} 个核验标记 · ${names.slice(0, 3).join('、')}${names.length > 3 ? '…' : ''} · 点击放大`
         const marker = new window.AMap.Marker({
